@@ -2,7 +2,7 @@ import argparse
 from multiprocessing.connection import wait
 from time import sleep
 from pathlib import Path
-from yaspin import yaspin
+from yaspin import kbi_safe_yaspin
 from colored import fg, bg, attr, stylize
 import logging as log
 from shutil import which
@@ -23,6 +23,8 @@ def parse_arguments():
                         help='An nmap speed argument. Default: T4')
     parser.add_argument('--nplan-path', dest='nplan', metavar='PATH', type=str, default='nplan',
                         help='The path to the nplan binary. (e.g. /usr/bin/nplan)')
+    parser.add_argument('--no-ipv6', action='store_true', dest='no_ipv6',
+                        help='Do not scan for IPv6 addresses.')
 
     args = parser.parse_args()
 
@@ -36,7 +38,7 @@ def parse_arguments():
 
 def print_banner(args):
     # Clear terminal
-    print(chr(27) + "[2J")
+    os.system('cls' if os.name == 'nt' else 'clear')
 
     print("""
 
@@ -71,6 +73,13 @@ if __name__ == '__main__':
             log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Could not find nplan at {stylize(args.nplan, STYLE_HIGHLIGHT)}!')
         exit(1)
 
+    # Check if scan6 is installed
+    if not which('scan6') and not args.no_ipv6:
+        log.error(f'{stylize("ERROR!", STYLE_FAILURE)} {stylize("scan6", STYLE_HIGHLIGHT)} is not installed!')
+        log.error(f'Run {stylize("sudo apt install ipv6-toolkit", STYLE_HIGHLIGHT)} to install it.')
+        log.error(f'Or disable IPv6 scanning with the {stylize("--no-ipv6", STYLE_HIGHLIGHT)} argument.')
+        exit(1)
+
     # Check if run as sudo
     #if os.geteuid() != 0:
     #    log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Please start Recool with {stylize("sudo", STYLE_HIGHLIGHT)}!')
@@ -79,7 +88,7 @@ if __name__ == '__main__':
     # Cleanup nplan model
     os.system(f'{args.nplan} -fresh > /dev/null')
 
-    with yaspin(text="Initializing scan", color="yellow") as spinner:
+    with kbi_safe_yaspin(text="Initializing scan", color="yellow") as spinner:
         ns = ip_tools.NetworkScanner(args, {}, spinner)
         #ns.test()
         ns.ping_scan_subnet('24')

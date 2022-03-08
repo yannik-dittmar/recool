@@ -113,11 +113,16 @@ class NetworkScanner:
         self.spinner = spinner
 
     def scan(self, hosts: List[str], args: str):
-        os.system(f'sudo nmap -oX ./{self.args.storage}/scan.xml {args} {self.args.speed} {" ".join(hosts)} > /dev/null')
+        os.popen(f'nmap -oX ./{self.args.storage}/scan.xml {args} {self.args.speed} {" ".join(hosts)} > /dev/null').read()
         with open(f'./{self.args.storage}/scan.xml',mode='r') as scan_file:
             result = self.nmap.analyse_nmap_xml_scan(nmap_xml_output=scan_file.read())
 
         return result["scan"]
+
+    def update_model(self):
+        self.spinner.text = f'Updating the nplan model...'
+        os.popen(f'{self.args.nplan} -nmap ./{self.args.storage}/scan.xml > /dev/null').read()
+        os.popen(f'{self.args.nplan} -export > /dev/null').read()
     
     def find_by_ip(self, ip, create=True):
         if keys_exists(self.devices, ip):
@@ -168,13 +173,15 @@ class NetworkScanner:
             device = self.find_by_ip(str(host))
             device.done_ping_scan = True
 
+        self.update_model()
+
         #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
 
     def full_scan_up(self, devices=None):
         if not devices:
             devices = self.devices
 
-        for device in devices:
+        for ip, device in devices.items():
             if not device.is_up or device.done_full_scan:
                 continue
         
@@ -185,8 +192,11 @@ class NetworkScanner:
                 device.done_full_scan = True
                 self.spinner.write(str(device))
 
+            self.update_model()
+
             #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
 
     def test(self):
-        result = self.nmap.scan(hosts="10.129.0.2", arguments=f'{self.args.speed}')["scan"]
+        result = self.scan(["192.168.188.1"], '')
+        #result = self.nmap.scan(hosts="10.129.0.2", arguments=f'{self.args.speed}')["scan"]
         #self.spinner.write(self.nmap.)
