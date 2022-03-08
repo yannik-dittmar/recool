@@ -1,11 +1,11 @@
 import argparse
 from multiprocessing.connection import wait
 from time import sleep
-import nmap
-import json
+from pathlib import Path
 from yaspin import yaspin
 from colored import fg, bg, attr, stylize
 import logging as log
+from shutil import which
 import ip_tools
 
 STYLE_HIGHLIGHT = fg("orange_3") + attr("bold")
@@ -16,9 +16,9 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Reconstruct the hash for the I-Sec Keysafe.')
     parser.add_argument('-i', '--ip', dest='ip', metavar='IP', type=str, default=ip_tools.default_ip(),
                         help='Your local IP address.')
-    parser.add_argument('-s', '--storage-file', dest='storage', metavar='STORAGE_FILE', type=str, default=None,
-                        help='The file where information about the network will be stored or loaded from.')
-    parser.add_argument('--speed', dest='speed', metavar='SPEED', type=str, default='-T5',
+    parser.add_argument('-s', '--storage-folder', dest='storage', metavar='STORAGE_FILE', type=str, default="recool",
+                        help='The folder where information about the network will be stored or loaded from.')
+    parser.add_argument('--speed', dest='speed', metavar='SPEED', type=str, default='-T4',
                         help='An nmap speed argument. Default: T4')
 
     args = parser.parse_args()
@@ -27,8 +27,7 @@ def parse_arguments():
         log.error(f'The IP "{args.ip}" address you provided is not valid.')
     args.ip = ip_tools.parse_ip(args.ip)
 
-    if not args.storage:
-        args.storage = f'{args.ip.replace(".", "-")}.json'
+    Path(args.storage).mkdir(parents=True, exist_ok=True)
 
     return args
 
@@ -50,7 +49,7 @@ def print_banner(args):
         """)
     
     log.info(f'Selected IP for network scanning: {stylize(args.ip, STYLE_HIGHLIGHT)}')
-    log.info(f'Selected storage file: {stylize(args.storage, STYLE_HIGHLIGHT)}')
+    log.info(f'Selected storage folder: {stylize(args.storage, STYLE_HIGHLIGHT)}')
     log.info(f'Selected speed argument: {stylize(args.speed, STYLE_HIGHLIGHT)}')
     log.info('')
 
@@ -61,6 +60,7 @@ if __name__ == '__main__':
     
     with yaspin(text="Initializing scan", color="yellow") as spinner:
         ns = ip_tools.NetworkScanner(args, [], spinner)
+        #ns.test()
         ns.ping_scan_subnet('24')
-        ns.full_scan_up()
+        #ns.full_scan_up()
     
