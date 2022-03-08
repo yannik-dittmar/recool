@@ -9,6 +9,7 @@ import json
 from json import JSONEncoder
 import logging as log
 from colored import fg, bg, attr, stylize
+from datetime import datetime
 import recool
 
 def parse_ip(ip):
@@ -49,13 +50,16 @@ class NetworkDevice():
     services: Dict[str, str]
 
     def __init__(self, **kv):
-        self.done_ping_scan = False
-        self.done_full_scan = False
-        self.is_up = False
-        self.name = ""
         self.ip = ""
-        self.services = {}
         self.__dict__.update(kv)
+
+    def __getattr__(self, item):
+        return None
+
+    def add_service(self, port, info):
+        if not self.services:
+            self.services = {}
+        self.services[port] = info
 
     def __str__(self) -> str:
         string = ""
@@ -102,14 +106,19 @@ class NetworkEncoder(JSONEncoder):
     def default(self, o):
         if isinstance(o, set):
             return list(o)
+        if isinstance(o, NetworkDevice):
+            parsed = dict(o.__dict__)
+            if 'ip' in parsed:
+                del parsed['ip']
+            return parsed
 
         return o.__dict__
 
 class NetworkScanner:
-    def __init__(self, args, devices, spinner):
+    def __init__(self, args, spinner):
         self.nmap = nmap.PortScanner()
         self.args = args
-        self.devices: Dict[str, NetworkDevice] = devices
+        self.devices: Dict[str, NetworkDevice] = {}
         self.spinner = spinner
 
     def scan(self, hosts: List[str], args: str):
@@ -121,8 +130,27 @@ class NetworkScanner:
 
     def update_model(self):
         self.spinner.text = f'Updating the nplan model...'
-        os.popen(f'{self.args.nplan} -nmap ./{self.args.storage}/scan.xml > /dev/null').read()
-        os.popen(f'{self.args.nplan} -export > /dev/null').read()
+        os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
+        os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
+
+        self.spinner.text = f'Saving the current state... (DO NOT EXIT)'
+        with open(f'{self.args.storage}/recool_save_new.json', 'w') as outfile:
+            json.dump(self.devices, outfile, cls=NetworkEncoder)
+        if os.path.exists(f'{self.args.storage}/recool_save.json'):
+            os.remove(f'{self.args.storage}/recool_save.json')
+        os.rename(f'{self.args.storage}/recool_save_new.json', f'{self.args.storage}/recool_save.json')
+
+    def load_devices(self):
+        if not os.path.exists(f'{self.args.storage}/recool_save.json'):
+            return
+        
+        storage = {}
+        with open(f'{self.args.storage}/recool_save.json', 'r') as f:
+            storage = json.load(f)
+
+        for ip, device in storage.items():
+            self.devices[ip] = NetworkDevice(**device)
+            self.devices[ip].ip = ip
     
     def find_by_ip(self, ip, create=True):
         if keys_exists(self.devices, ip):
@@ -144,13 +172,13 @@ class NetworkScanner:
         
         if (keys_exists(data, 'tcp')):
             for port, info in data['tcp'].items():
-                device.services[port] = info
+                device.add_service(port, info)
 
         return device
 
     def ping_scan_subnet(self, subnet: str):
         iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
-        self.spinner.text = f'Performing ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
+        self.spinner.text = f'Performing ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)} ({datetime.now().strftime("%H:%M:%S")})'
         
         # Collect hosts
         hosts = []
@@ -185,7 +213,7 @@ class NetworkScanner:
             if not device.is_up or device.done_full_scan:
                 continue
         
-            self.spinner.text = f'Performing full-scan for: {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
+            self.spinner.text = f'Performing full-scan for: {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({datetime.now().strftime("%H:%M:%S")})'
             result = self.scan([device.ip], '-A -p- -sV')
             for ip, data in result.items():
                 device = self.parse_device_data(ip, data)
