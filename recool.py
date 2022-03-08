@@ -6,6 +6,7 @@ from yaspin import yaspin
 from colored import fg, bg, attr, stylize
 import logging as log
 from shutil import which
+import os
 import ip_tools
 
 STYLE_HIGHLIGHT = fg("orange_3") + attr("bold")
@@ -57,10 +58,23 @@ if __name__ == '__main__':
     log.basicConfig(encoding='utf-8', level=log.DEBUG, format='%(message)s')
     args = parse_arguments()
     print_banner(args)
-    
+
+    # Check if nplan is installed
+    if not which('nplan'):
+        log.error(f'{stylize("ERROR!", STYLE_FAILURE)} {stylize("nplan", STYLE_HIGHLIGHT)} is not installed!\nVisit {stylize("https://github.com/richartkeil/nplan", STYLE_HIGHLIGHT)}')
+        exit(1)
+
+    # Check if run as sudo
+    #if os.geteuid() != 0:
+    #    log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Please start Recool with {stylize("sudo", STYLE_HIGHLIGHT)}!')
+    #    exit(1)
+
+    # Cleanup nplan model
+    os.system('nplan -fresh > /dev/null')
+
     with yaspin(text="Initializing scan", color="yellow") as spinner:
         ns = ip_tools.NetworkScanner(args, [], spinner)
         #ns.test()
         ns.ping_scan_subnet('24')
-        #ns.full_scan_up()
+        ns.full_scan_up()
     

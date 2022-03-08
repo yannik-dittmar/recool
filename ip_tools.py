@@ -19,7 +19,8 @@ def parse_ip(ip):
 
 def default_ip():
     #return socket.gethostbyname(socket.gethostname())
-    return "172.22.3.170"
+    #return "172.22.3.170"
+    return "10.129.0.217"
 
 def keys_exists(element, *keys):
     '''
@@ -161,7 +162,6 @@ class NetworkScanner:
         for ip, data in result.items():
             device = self.parse_device_data(ip, data)
             device.is_up = True
-            self.spinner.write(str(device))
         
         # Update done_ping_scan
         for host in iface.network.hosts():
@@ -179,13 +179,13 @@ class NetworkScanner:
                 continue
         
             self.spinner.text = f'Performing full-scan for: {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
-            result = self.scan([device], '-A -p- -sV')
+            result = self.scan([device.ip], '-A -p- -sV')
             for ip, data in result.items():
                 device = self.parse_device_data(ip, data)
                 device.done_full_scan = True
                 self.spinner.write(str(device))
 
-            self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
+            #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
 
     def test(self):
         result = self.nmap.scan(hosts="10.129.0.2", arguments=f'{self.args.speed}')["scan"]
