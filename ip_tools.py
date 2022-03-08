@@ -2,6 +2,8 @@ from http import server
 import socket
 import ipaddress
 from telnetlib import NOP
+import threading
+import time
 from typing import Dict, List, Set
 import nmap
 import os
@@ -114,6 +116,29 @@ class NetworkEncoder(JSONEncoder):
 
         return o.__dict__
 
+class NmapProgressUpdater(threading.Thread):
+    abort: bool
+    spinner: any
+    stats_path: str
+    prefix: str
+
+    def __init__(self, **kv):
+        threading.Thread.__init__(self)
+        self.abort = False
+        self.__dict__.update(kv)
+
+    def run(self):
+        time.sleep(2)
+        self.prefix = self.spinner.text
+        while not self.abort:
+            stats = ""
+            if os.path.exists(self.stats_path):
+                with open(self.stats_path, mode='r') as stats_f:
+                    for line in stats_f:
+                        stats = line.rstrip("\n")
+                self.spinner.text = f'{self.prefix} - {stats}'
+            time.sleep(1)
+
 class NetworkScanner:
     def __init__(self, args, spinner):
         self.nmap = nmap.PortScanner()
@@ -121,9 +146,20 @@ class NetworkScanner:
         self.devices: Dict[str, NetworkDevice] = {}
         self.spinner = spinner
 
-    def scan(self, hosts: List[str], args: str):
-        os.popen(f'nmap -oX ./{self.args.storage}/scan.xml {args} {self.args.speed} {" ".join(hosts)} > /dev/null').read()
-        with open(f'./{self.args.storage}/scan.xml',mode='r') as scan_file:
+    def scan(self, hosts: List[str], args: List[str]):
+        # Start nmap scan
+        thread = NmapProgressUpdater(spinner=self.spinner, stats_path=f'{self.args.storage}/nmap.output')
+        thread.daemon = True
+        thread.start()
+        os.popen(f'nmap -oX ./{self.args.storage}/scan.xml --stats-every 5s {args} {self.args.speed} {" ".join(hosts)} > {self.args.storage}/nmap.output').read()
+        thread.abort = True
+
+        # Cleanup log
+        if os.path.exists(f'{self.args.storage}/nmap.output'):
+            os.remove(f'{self.args.storage}/nmap.output')
+
+        # Parse scan results
+        with open(f'{self.args.storage}/scan.xml',mode='r') as scan_file:
             result = self.nmap.analyse_nmap_xml_scan(nmap_xml_output=scan_file.read())
 
         return result["scan"]
@@ -178,7 +214,7 @@ class NetworkScanner:
 
     def ping_scan_subnet(self, subnet: str):
         iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
-        self.spinner.text = f'Performing ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)} ({datetime.now().strftime("%H:%M:%S")})'
+        self.spinner.text = f'Performing ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
         
         # Collect hosts
         hosts = []
@@ -213,7 +249,7 @@ class NetworkScanner:
             if not device.is_up or device.done_full_scan:
                 continue
         
-            self.spinner.text = f'Performing full-scan for: {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({datetime.now().strftime("%H:%M:%S")})'
+            self.spinner.text = f'Performing full-scan for: {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
             result = self.scan([device.ip], '-A -p- -sV')
             for ip, data in result.items():
                 device = self.parse_device_data(ip, data)
@@ -225,6 +261,6 @@ class NetworkScanner:
             #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
 
     def test(self):
-        result = self.scan(["192.168.188.1"], '')
+        result = self.scan(["192.168.188.30"], '-A -p- -sV')
         #result = self.nmap.scan(hosts="10.129.0.2", arguments=f'{self.args.speed}')["scan"]
         #self.spinner.write(self.nmap.)

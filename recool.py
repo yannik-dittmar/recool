@@ -112,4 +112,3 @@ if __name__ == '__main__':
         ns.load_devices()
         ns.ping_scan_subnet('24')
         ns.full_scan_up()
-    
