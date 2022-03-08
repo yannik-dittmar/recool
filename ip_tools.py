@@ -20,7 +20,8 @@ def parse_ip(ip):
 def default_ip():
     #return socket.gethostbyname(socket.gethostname())
     #return "172.22.3.170"
-    return "10.129.0.217"
+    return "192.168.188.10"
+    #return "10.129.0.217"
 
 def keys_exists(element, *keys):
     '''
@@ -108,7 +109,7 @@ class NetworkScanner:
     def __init__(self, args, devices, spinner):
         self.nmap = nmap.PortScanner()
         self.args = args
-        self.devices: List[NetworkDevice] = devices
+        self.devices: Dict[str, NetworkDevice] = devices
         self.spinner = spinner
 
     def scan(self, hosts: List[str], args: str):
@@ -119,13 +120,12 @@ class NetworkScanner:
         return result["scan"]
     
     def find_by_ip(self, ip, create=True):
-        for d in self.devices:
-            if ip == d.ip:
-                return d
+        if keys_exists(self.devices, ip):
+            return self.devices[ip]
 
         if create:
             device = NetworkDevice(ip=ip)
-            self.devices.append(device)
+            self.devices[ip] = device
             return device
         return None
 

@@ -17,10 +17,12 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Reconstruct the hash for the I-Sec Keysafe.')
     parser.add_argument('-i', '--ip', dest='ip', metavar='IP', type=str, default=ip_tools.default_ip(),
                         help='Your local IP address.')
-    parser.add_argument('-s', '--storage-folder', dest='storage', metavar='STORAGE_FILE', type=str, default="recool",
+    parser.add_argument('-s', '--storage-folder', dest='storage', metavar='PATH', type=str, default="dist",
                         help='The folder where information about the network will be stored or loaded from.')
     parser.add_argument('--speed', dest='speed', metavar='SPEED', type=str, default='-T4',
                         help='An nmap speed argument. Default: T4')
+    parser.add_argument('--nplan-path', dest='nplan', metavar='PATH', type=str, default='nplan',
+                        help='The path to the nplan binary. (e.g. /usr/bin/nplan)')
 
     args = parser.parse_args()
 
@@ -60,8 +62,13 @@ if __name__ == '__main__':
     print_banner(args)
 
     # Check if nplan is installed
-    if not which('nplan'):
-        log.error(f'{stylize("ERROR!", STYLE_FAILURE)} {stylize("nplan", STYLE_HIGHLIGHT)} is not installed!\nVisit {stylize("https://github.com/richartkeil/nplan", STYLE_HIGHLIGHT)}')
+    if not which(args.nplan):
+        if args.nplan == 'nplan':
+            log.error(f'{stylize("ERROR!", STYLE_FAILURE)} {stylize("nplan", STYLE_HIGHLIGHT)} is not installed!')
+            log.error(f'Visit {stylize("https://github.com/richartkeil/nplan", STYLE_HIGHLIGHT)}')
+            log.error(f'Or specify the path to the executable with the {stylize("--nplan-path", STYLE_HIGHLIGHT)} argument.')
+        else:
+            log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Could not find nplan at {stylize(args.nplan, STYLE_HIGHLIGHT)}!')
         exit(1)
 
     # Check if run as sudo
@@ -70,10 +77,10 @@ if __name__ == '__main__':
     #    exit(1)
 
     # Cleanup nplan model
-    os.system('nplan -fresh > /dev/null')
+    os.system(f'{args.nplan} -fresh > /dev/null')
 
     with yaspin(text="Initializing scan", color="yellow") as spinner:
-        ns = ip_tools.NetworkScanner(args, [], spinner)
+        ns = ip_tools.NetworkScanner(args, {}, spinner)
         #ns.test()
         ns.ping_scan_subnet('24')
         ns.full_scan_up()
