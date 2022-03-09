@@ -266,6 +266,7 @@ class NetworkScanner:
         self.handling_interrupt = False
 
     def ping_scan_subnet(self, subnet: str):
+        self.interrupt_action = None
         iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
         self.spinner.text = f'Ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
         self.interrupt_msg = f'Ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
@@ -307,6 +308,7 @@ class NetworkScanner:
     
     #region full scan
     def full_scan_sh(self, sig, frame):
+        self.interrupt_action = None
         self.handling_interrupt = True
         questions = [
             inquirer.List('action',
