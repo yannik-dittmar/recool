@@ -27,8 +27,8 @@ def parse_ip(ip):
 def default_ip():
     #return socket.gethostbyname(socket.gethostname())
     #return "172.22.3.170"
-    #return "192.168.188.10"
-    return "10.129.0.217"
+    return "192.168.188.10"
+    #return "10.129.0.217"
 
 def keys_exists(element, *keys):
     '''
@@ -378,11 +378,12 @@ class NetworkScanner:
 
         queue = devices.items()
         queue = list(filter(lambda item: item[1].is_up and not item[1].done_full_scan, queue))
+        count = len(queue)
         while queue:
             ip, device = queue.pop(0)
         
-            self.spinner.text = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
-            self.interrupt_msg = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
+            self.spinner.text = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({count - len(queue)}/{count})'
+            self.interrupt_msg = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({count - len(queue)}/{count})'
             result = self.scan([device.ip], ['-A', '-p-', '-sV'], self.full_scan_sh)
             if self.interrupt_action == NetworkScanner.INT_SKIP_HOST:
                 continue
