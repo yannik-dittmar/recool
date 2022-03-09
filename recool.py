@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import argparse
 from multiprocessing.connection import wait
 from time import sleep
