@@ -17,19 +17,19 @@ STYLE_FAILURE = fg("red_3a") + attr("bold")
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Automatic network scanner with nplan for network graphs.')
-    parser.add_argument('-i', '--ip', dest='ip', metavar='IP', type=str, default=ip_tools.default_ip(),
+    parser.add_argument('-i', '--ip', type=str, default=ip_tools.default_ip(),
                         help='Your local IP address.')
-    parser.add_argument('-I', '--iface', dest='iface', metavar='INTERFACE', type=str, required=True,
+    parser.add_argument('-I', '--iface', metavar='INTERFACE', type=str, required=True,
                         help='The interface that will be used for scanning.')
-    parser.add_argument('-s', '--storage-folder', dest='storage', metavar='PATH', type=str, default="./dist",
+    parser.add_argument('-s', '--storage-folder', dest='storage', metavar='PATH', type=Path, default="./dist",
                         help='The folder where information about the network will be stored or loaded from.')
-    parser.add_argument('--speed', dest='speed', metavar='SPEED', type=str, default='-T4',
-                        help='An nmap speed argument. Default: T4')
-    parser.add_argument('--nplan-path', dest='nplan', metavar='PATH', type=str, default='nplan',
+    parser.add_argument('--speed', type=str, default='-T4',
+                        help='An nmap speed argument. Default: -T4')
+    parser.add_argument('--nplan-path', dest='nplan', metavar='PATH', type=Path, default='nplan',
                         help='The path to the nplan binary. (e.g. /usr/bin/nplan)')
-    parser.add_argument('--no-ipv6', action='store_true', dest='no_ipv6',
+    parser.add_argument('--no-ipv6', action='store_true',
                         help='Do not scan for IPv6 addresses.')
-    parser.add_argument('-c', '--cleanup', action='store_true', dest='cleanup',
+    parser.add_argument('-c', '--cleanup', action='store_true',
                         help='Clear the nplan model and recool save data.')
 
     args = parser.parse_args()
@@ -38,7 +38,7 @@ def parse_arguments():
         log.error(f'The IP "{args.ip}" address you provided is not valid.')
     args.ip = ip_tools.parse_ip(args.ip)
 
-    Path(args.storage).mkdir(parents=True, exist_ok=True)
+    args.storage.mkdir(parents=True, exist_ok=True)
 
     return args
 
@@ -130,6 +130,8 @@ def main():
         ns.aggressive_scan_subnet('24')
         ns.full_scan_up()
         #ns.ipv6_scan()
+        ns.router_scan()
+        ns.full_scan_up()
 
 if __name__ == '__main__':
     main()

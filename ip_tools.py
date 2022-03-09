@@ -191,7 +191,8 @@ class NetworkScanner:
                     start_new_session=True)
                 self.nmap_proc.wait()
             finally:
-                self.nmap_proc.kill()
+                if self.nmap_proc:
+                    self.nmap_proc.kill()
                 self.nmap_proc = None
         thread.abort = True
         while self.handling_interrupt:
@@ -270,7 +271,7 @@ class NetworkScanner:
     #endregion
 
     #region ping scan
-    def ping_scan_subnet_sh(self, sig, frame):
+    def ping_scan_sh(self, sig, frame):
         self.handling_interrupt = True
         questions = [
             inquirer.List('action',
@@ -299,26 +300,26 @@ class NetworkScanner:
             exit(0)
         self.handling_interrupt = False
 
-    def ping_scan_subnet(self, subnet: str):
+    def ping_scan(self, devices: List[NetworkDevice]=[]):
         self.interrupt_action = None
-        iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
-        self.spinner.text = f'Ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
-        self.interrupt_msg = f'Ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
 
-        # Collect hosts
-        devices = []
+        # Collect hosts if no one specified
+        if not devices:
+            for ip, device in self.devices.items():
+                if not device.done_ping_scan and not device.is_up:
+                    devices.append(device)
         hosts = []
-        for host in iface.network.hosts():
-            device: NetworkDevice = self.find_by_ip(str(host))
-            if not device.done_ping_scan and not device.is_up:
-                devices.append(device)
-                hosts.append(str(host))
-        
+        for device in devices:
+            hosts.append(device.ip)
+
         if not hosts:
             return
 
+        self.spinner.text = f'Ping-scan for {stylize(str(len(hosts)), recool.STYLE_HIGHLIGHT)} hosts'
+        self.interrupt_msg = f'Ping-scan for {stylize(str(len(hosts)), recool.STYLE_HIGHLIGHT)} hosts'
+
         # Perform scan and collect data
-        result = self.scan(hosts, ['-sn', '-n'], self.ping_scan_subnet_sh)
+        result = self.scan(hosts, ['-sn', '-n'], self.ping_scan_sh)
         if self.interrupt_action == NetworkScanner.INT_SKIP:
             return
         if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
@@ -327,7 +328,7 @@ class NetworkScanner:
             self.update_model(export=False)
             return
         if self.interrupt_action == NetworkScanner.INT_RESTART:
-            self.ping_scan_subnet(subnet)
+            self.ping_scan(devices)
         
         for ip, data in result.items():
             device = self.parse_device_data(ip, data)
@@ -341,6 +342,12 @@ class NetworkScanner:
 
         #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
     #endregion
+
+    def ping_scan_subnet(self, subnet: str):
+        iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
+        devices = [self.find_by_ip(str(host)) for host in iface.network.hosts()]
+        devices = list(filter(lambda device: not device.done_ping_scan and not device.is_up, devices))
+        self.ping_scan(devices)
     
     #region full scan
     def full_scan_sh(self, sig, frame):
@@ -507,7 +514,86 @@ class NetworkScanner:
             os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
     #endregion
 
+    #region router scan
+    def router_scan_subnet_sh(self, sig, frame):
+        self.handling_interrupt = True
+        questions = [
+            inquirer.List('action',
+                            message=self.interrupt_msg,
+                            carousel=True,
+                            choices=[
+                                'Continue scanning',
+                                'Restart scan',
+                                'Skip router-scan',
+                                'Skip router-scan and mark all routers as scanned',
+                                stylize("Exit recool", recool.STYLE_FAILURE)],
+                        ),
+        ]
+        with self.spinner.hidden():
+            answer = inquirer.prompt(questions)['action']
+        if self.nmap_proc and answer != 'Continue scanning':
+            self.nmap_proc.send_signal(signal.SIGINT)
+        if answer == 'Restart scan':
+            self.interrupt_action = NetworkScanner.INT_RESTART
+        if answer == 'Skip router-scan':
+            self.interrupt_action = NetworkScanner.INT_SKIP
+        if answer == 'Skip router-scan and mark all routers as scanned':
+            self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED_SCANNED
+        if 'Exit recool' in answer:
+            self.spinner.fail(f'User interrupt! Last state:')
+            exit(0)
+        self.handling_interrupt = False
+
+    def router_scan(self):
+        self.interrupt_action = None
+        router_pattern = '.'.join(self.args.ip.split('.')[:2]) + '.*.1'
+        self.spinner.text = f'Router-scan on {stylize(router_pattern, recool.STYLE_HIGHLIGHT)}'
+        self.interrupt_msg = f'Router-scan on {stylize(router_pattern, recool.STYLE_HIGHLIGHT)}'
+
+        # Collect hosts
+        devices = []
+        hosts = []
+        for i in range(0, 255):
+            ip = router_pattern.replace('*', str(i))
+            device: NetworkDevice = self.find_by_ip(ip)
+            if not device.done_ping_scan and not device.is_up:
+                devices.append(device)
+                hosts.append(ip)
+        
+        if not hosts:
+            return
+
+        # Perform scan
+        result = self.scan(hosts, ['-sn', '-n'], self.router_scan_subnet_sh)
+        if self.interrupt_action == NetworkScanner.INT_SKIP:
+            return
+        if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
+            for device in devices:
+                device.done_ping_scan = True
+            self.update_model(export=False)
+            return
+        if self.interrupt_action == NetworkScanner.INT_RESTART:
+            self.router_scan()
+
+        # Create unscanned devices in discovered subnets
+        for ip, data in result.items():
+            device = self.parse_device_data(ip, data)
+            device.is_up = True
+            for i in range(1, 255):
+                self.find_by_ip('.'.join(ip.split('.')[:3]) + '.' + str(i))
+        
+        # Update done_ping_scan
+        for device in devices:
+            device.done_ping_scan = True
+
+        self.update_model()
+    #endregion
+
     def test(self):
+        for i in range(0, 255):
+            ip = '.'.join(self.args.ip.split('.')[:2]) + '.' + str(i) + '.1'
+            print(ip)
+        return
         result = self.scan(['192.168.188.74'], ['-Pn', '-n', '-F', '-d'], self.aggressive_scan_subnet_sh)
         #result = self.nmap.scan(hosts="10.129.0.2", arguments=f'{self.args.speed}')["scan"]
         self.spinner.write(json.dumps(result))
