@@ -70,7 +70,7 @@ def print_banner(args):
     log.info(f'Speed argument: {stylize(args.speed, STYLE_HIGHLIGHT)}')
     log.info('')
 
-if __name__ == '__main__':
+def main():
     log.basicConfig(encoding='utf-8', level=log.DEBUG, format='%(message)s')
     args = parse_arguments()
 
@@ -117,9 +117,15 @@ if __name__ == '__main__':
     #    log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Please start Recool with {stylize("sudo", STYLE_HIGHLIGHT)}!')
     #    exit(1)
 
-    with kbi_safe_yaspin(text="Initializing scan", color="yellow") as spinner:
+    with kbi_safe_yaspin(text="Initializing recool", color="yellow") as spinner:
         ns = ip_tools.NetworkScanner(args, spinner)
         #ns.test()
+        #return
         ns.load_devices()
         ns.ping_scan_subnet('24')
         ns.full_scan_up()
+        ns.aggressive_scan_subnet('24')
+        ns.full_scan_up()
+
+if __name__ == '__main__':
+    main()

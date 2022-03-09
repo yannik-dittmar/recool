@@ -1,5 +1,6 @@
 #! /usr/bin/env python3
 
+from cmath import exp
 from http import server
 from pathlib import Path
 import signal
@@ -58,6 +59,7 @@ def delete_old_saves(path, min=20):
 class NetworkDevice():
     done_ping_scan: bool
     done_full_scan: bool
+    done_agg_scan: bool
     is_up: bool
     name: str
     ip: str
@@ -149,8 +151,9 @@ class NmapProgressUpdater(threading.Thread):
             if os.path.exists(self.stats_path):
                 with open(self.stats_path, mode='r') as stats_f:
                     for line in stats_f:
-                        stats = line.rstrip("\n")
-                if '%' in stats:
+                        if '%' in line:
+                            stats = line.rstrip("\n")
+                if stats:
                     self.spinner.text = f'{self.prefix} - {stats.split(";")[0]}'
             time.sleep(1)
 
@@ -182,7 +185,7 @@ class NetworkScanner:
         thread.start()
         with open(f'{self.args.storage}/nmap.log', 'w') as log, open(f'{self.args.storage}/nmap.error', 'w') as err:
             try:
-                self.nmap_proc = subprocess.Popen(['nmap', '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '5s', *args, self.args.speed, *hosts], stdout=log, stderr=err, start_new_session=True)
+                self.nmap_proc = subprocess.Popen(['nmap', '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '3s', *args, self.args.speed, *hosts], stdout=log, stderr=err, start_new_session=True)
                 self.nmap_proc.wait()
             finally:
                 self.nmap_proc.kill()
@@ -226,11 +229,12 @@ class NetworkScanner:
         return device
 
     #region Export, save and load
-    def update_model(self):
+    def update_model(self, export=True):
         # Export
-        self.spinner.text = f'Updating the nplan model...'
-        os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
-        os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
+        if export:
+            self.spinner.text = f'Updating the nplan model...'
+            os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
+            os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
 
         # Save current state
         self.spinner.text = f'Saving the current state... (DO NOT EXIT)'
@@ -288,7 +292,7 @@ class NetworkScanner:
         if answer == 'Skip ping-scan and mark all hosts as ping-scanned':
             self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED_SCANNED
         if 'Exit recool' in answer:
-            self.spinner.fail(f'User interrupt!')
+            self.spinner.fail(f'User interrupt! Last state:')
             exit(0)
         self.handling_interrupt = False
 
@@ -317,7 +321,7 @@ class NetworkScanner:
         if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
             for device in devices:
                 device.done_ping_scan = True
-            self.update_model()
+            self.update_model(export=False)
             return
         if self.interrupt_action == NetworkScanner.INT_RESTART:
             self.ping_scan_subnet(subnet)
@@ -368,7 +372,7 @@ class NetworkScanner:
         if answer == 'Skip full-scan for queued host and mark them as scanned':
             self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED_SCANNED
         if 'Exit recool' in answer:
-            self.spinner.fail(f'User interrupt!')
+            self.spinner.fail(f'User interrupt! Last state:')
             exit(0)
         self.handling_interrupt = False
 
@@ -384,7 +388,7 @@ class NetworkScanner:
         
             self.spinner.text = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({count - len(queue)}/{count})'
             self.interrupt_msg = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({count - len(queue)}/{count})'
-            result = self.scan([device.ip], ['-A', '-p-', '-sV'], self.full_scan_sh)
+            result = self.scan([device.ip], ['-A', '-p-', '-sV', '-Pn'], self.full_scan_sh)
             if self.interrupt_action == NetworkScanner.INT_SKIP_HOST:
                 continue
             if self.interrupt_action == NetworkScanner.INT_SKIP_HOST_SCANNED:
@@ -398,7 +402,7 @@ class NetworkScanner:
                 while queue:
                     ip, device = queue.pop(0)
                     device.done_full_scan = True
-                self.update_model()
+                self.update_model(export=False)
                 return
             if self.interrupt_action == NetworkScanner.INT_RESTART:
                 queue.insert(0, (ip, device))
@@ -406,6 +410,7 @@ class NetworkScanner:
 
             for ip, data in result.items():
                 device = self.parse_device_data(ip, data)
+                device.is_up = True
                 device.done_full_scan = True
                 self.spinner.write(str(device))
 
@@ -414,7 +419,83 @@ class NetworkScanner:
             #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
     #endregion
 
+    #region aggressive scan
+    def aggressive_scan_subnet_sh(self, sig, frame):
+        self.handling_interrupt = True
+        questions = [
+            inquirer.List('action',
+                            message=self.interrupt_msg,
+                            carousel=True,
+                            choices=[
+                                'Continue scanning',
+                                'Restart scan',
+                                'Skip aggressive-scan',
+                                'Skip aggressive-scan and mark all hosts as aggressive-scanned',
+                                stylize("Exit recool", recool.STYLE_FAILURE)],
+                        ),
+        ]
+        with self.spinner.hidden():
+            answer = inquirer.prompt(questions)['action']
+        if self.nmap_proc and answer != 'Continue scanning':
+            self.nmap_proc.send_signal(signal.SIGINT)
+        if answer == 'Restart scan':
+            self.interrupt_action = NetworkScanner.INT_RESTART
+        if answer == 'Skip aggressive-scan':
+            self.interrupt_action = NetworkScanner.INT_SKIP
+        if answer == 'Skip aggressive-scan and mark all hosts as aggressive-scanned':
+            self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED_SCANNED
+        if 'Exit recool' in answer:
+            self.spinner.fail(f'User interrupt! Last state:')
+            exit(0)
+        self.handling_interrupt = False
+
+    def aggressive_scan_subnet(self, subnet: str):
+        self.interrupt_action = None
+        iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
+        self.spinner.text = f'Aggressive-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
+        self.interrupt_msg = f'Aggressive-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
+
+        # Collect hosts
+        devices = []
+        hosts = []
+        for host in iface.network.hosts():
+            device: NetworkDevice = self.find_by_ip(str(host))
+            if not device.is_up and not device.done_agg_scan:
+                devices.append(device)
+                hosts.append(str(host))
+        
+        if not hosts:
+            return
+
+        # Perform scan and collect data
+        result = self.scan(hosts, ['-Pn', '-n', '-F', '-d'], self.aggressive_scan_subnet_sh)
+        if self.interrupt_action == NetworkScanner.INT_SKIP:
+            return
+        if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
+            for device in devices:
+                device.done_agg_scan = True
+            self.update_model(export=False)
+            return
+        if self.interrupt_action == NetworkScanner.INT_RESTART:
+            self.aggressive_scan_subnet(subnet)
+        
+        # Check if hosts have send a response
+        for ip, data in result.items():
+            if (keys_exists(data, 'tcp')):
+                for port, info in data['tcp'].items():
+                    if info['state'] != 'filtered':
+                        device = self.find_by_ip(ip)
+                        device.is_up = True
+                        break
+        
+        # Update done_ping_scan
+        for device in devices:
+            device.done_agg_scan = True
+
+        self.update_model(export=False)
+    #endregion
+
     def test(self):
-        result = self.scan(["192.168.188.30"], '-A -p- -sV')
+        result = self.scan(['192.168.188.74'], ['-Pn', '-n', '-F', '-d'], self.aggressive_scan_subnet_sh)
         #result = self.nmap.scan(hosts="10.129.0.2", arguments=f'{self.args.speed}')["scan"]
-        #self.spinner.write(self.nmap.)
+        self.spinner.write(json.dumps(result))
