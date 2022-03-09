@@ -141,7 +141,11 @@ class NmapProgressUpdater(threading.Thread):
             time.sleep(1)
 
 class NetworkScanner:
-    nmap_proc: subprocess.Popen
+    INT_SKIP = "skip"
+    INT_SKIP_HOST = "skip_host"
+    INT_SKIP_HOST_SCANNED = "skip_host_scanned"
+    INT_SKIP_QUEUED = "skip_queued"
+    INT_SKIP_QUEUED_SCANNED = "skip_queued_scanned"
 
     def __init__(self, args, spinner):
         self.nmap = nmap.PortScanner()
@@ -149,26 +153,13 @@ class NetworkScanner:
         self.devices: Dict[str, NetworkDevice] = {}
         self.spinner = spinner
         self.nmap_proc = None
+        self.interrupt_msg = ""
         self.interrupt_action = None
+        self.handling_interrupt = False
 
-    def signal_handler(self, sig, frame):
-        questions = [
-            inquirer.List('action',
-                            message="What do you want to do?",
-                            carousel=True,
-                            choices=['Continue scanning', 'Skip this scan', 'Skip this scan and never scan again', 'Exit recool'],
-                        ),
-        ]
-        with self.spinner.hidden():
-            answers = inquirer.prompt(questions)
-        if self.nmap_proc and answers['action'] != 'Continue scanning':
-            self.nmap_proc.send_signal(signal.SIGINT)
-        if answers['action'] == 'Exit recool':
-            exit(0)
-
-    def scan(self, hosts: List[str], args: List[str]):
+    def scan(self, hosts: List[str], args: List[str], sig_handler):
         original_sigint_handler = signal.getsignal(signal.SIGINT)
-        signal.signal(signal.SIGINT, self.signal_handler)
+        signal.signal(signal.SIGINT, sig_handler)
 
         # Start nmap scan
         thread = NmapProgressUpdater(spinner=self.spinner, stats_path=f'{self.args.storage}/nmap.log')
@@ -183,6 +174,8 @@ class NetworkScanner:
                 self.nmap_proc.kill()
                 self.nmap_proc = None
         thread.abort = True
+        while self.handling_interrupt:
+            time.sleep(0.3)
         signal.signal(signal.SIGINT, original_sigint_handler)
 
         # Parse scan results
@@ -194,6 +187,7 @@ class NetworkScanner:
 
         return result["scan"]
 
+    #region Export, save and load
     def update_model(self):
         self.spinner.text = f'Updating the nplan model...'
         os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
@@ -217,6 +211,7 @@ class NetworkScanner:
         for ip, device in storage.items():
             self.devices[ip] = NetworkDevice(**device)
             self.devices[ip].ip = ip
+    #endregion
     
     def find_by_ip(self, ip, create=True):
         if keys_exists(self.devices, ip):
@@ -242,46 +237,134 @@ class NetworkScanner:
 
         return device
 
+    #region ping scan
+    def ping_scan_subnet_sh(self, sig, frame):
+        self.handling_interrupt = True
+        questions = [
+            inquirer.List('action',
+                            message=self.interrupt_msg,
+                            carousel=True,
+                            choices=[
+                                'Continue scanning',
+                                'Skip ping-scan',
+                                'Skip ping-scan and mark all hosts as ping-scanned',
+                                stylize("Exit recool", recool.STYLE_FAILURE)],
+                        ),
+        ]
+        with self.spinner.hidden():
+            answer = inquirer.prompt(questions)['action']
+        if self.nmap_proc and answer != 'Continue scanning':
+            self.nmap_proc.send_signal(signal.SIGINT)
+        if answer == 'Skip ping-scan':
+            self.interrupt_action = NetworkScanner.INT_SKIP
+        if answer == 'Skip ping-scan and mark all hosts as ping-scanned':
+            self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED_SCANNED
+        if 'Exit recool' in answer:
+            self.spinner.fail(f'User interrupt!')
+            exit(0)
+        self.handling_interrupt = False
+
     def ping_scan_subnet(self, subnet: str):
         iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
-        self.spinner.text = f'Performing ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
-        
+        self.spinner.text = f'Ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
+        self.interrupt_msg = f'Ping-scan on subnet {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)}'
+
         # Collect hosts
+        devices = []
         hosts = []
         for host in iface.network.hosts():
             device: NetworkDevice = self.find_by_ip(str(host))
             if not device.done_ping_scan and not device.is_up:
+                devices.append(device)
                 hosts.append(str(host))
         
         if not hosts:
             return
 
         # Perform scan and collect data
-        #result = self.scan(hosts, '-sn -n')
-        result = self.scan(hosts, ['-sn', '-n'])
+        result = self.scan(hosts, ['-sn', '-n'], self.ping_scan_subnet_sh)
+        if self.interrupt_action == NetworkScanner.INT_SKIP:
+            return
+        if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
+            for device in devices:
+                device.done_ping_scan = True
+            self.update_model()
+            return
+        
         for ip, data in result.items():
             device = self.parse_device_data(ip, data)
             device.is_up = True
         
         # Update done_ping_scan
-        for host in iface.network.hosts():
-            device = self.find_by_ip(str(host))
+        for device in devices:
             device.done_ping_scan = True
 
         self.update_model()
 
         #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
+    #endregion
+    
+    #region full scan
+    def full_scan_sh(self, sig, frame):
+        self.handling_interrupt = True
+        questions = [
+            inquirer.List('action',
+                            message=self.interrupt_msg,
+                            carousel=True,
+                            choices=[
+                                'Continue scanning', 
+                                'Skip full-scan for this host', 
+                                'Skip full-scan for this host and mark as scanned',
+                                'Skip full-scan for queued hosts',
+                                'Skip full-scan for queued host and mark them as scanned',
+                                stylize("Exit recool", recool.STYLE_FAILURE)],
+                        ),
+        ]
+        with self.spinner.hidden():
+            answer = inquirer.prompt(questions)['action']
+        if self.nmap_proc and answer != 'Continue scanning':
+            self.nmap_proc.send_signal(signal.SIGINT)
+        if answer == 'Skip full-scan for this host':
+            self.interrupt_action = NetworkScanner.INT_SKIP_HOST
+        if answer == 'Skip full-scan for this host and mark as scanned':
+            self.interrupt_action = NetworkScanner.INT_SKIP_HOST_SCANNED
+        if answer == 'Skip full-scan for queued hosts':
+            self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED
+        if answer == 'Skip full-scan for queued host and mark them as scanned':
+            self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED_SCANNED
+        if 'Exit recool' in answer:
+            self.spinner.fail(f'User interrupt!')
+            exit(0)
+        self.handling_interrupt = False
 
     def full_scan_up(self, devices=None):
         if not devices:
             devices = self.devices
 
-        for ip, device in devices.items():
-            if not device.is_up or device.done_full_scan:
-                continue
+        queue = devices.items()
+        queue = list(filter(lambda item: item[1].is_up and not item[1].done_full_scan, queue))
+        while queue:
+            ip, device = queue.pop(0)
         
-            self.spinner.text = f'Performing full-scan for: {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
-            result = self.scan([device.ip], ['-A', '-p-', '-sV'])
+            self.spinner.text = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
+            self.interrupt_msg = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
+            result = self.scan([device.ip], ['-A', '-p-', '-sV'], self.full_scan_sh)
+            if self.interrupt_action == NetworkScanner.INT_SKIP_HOST:
+                continue
+            if self.interrupt_action == NetworkScanner.INT_SKIP_HOST_SCANNED:
+                device.done_full_scan = True
+                self.update_model()
+                continue
+            if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED:
+                return
+            if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
+                device.done_full_scan = True
+                while queue:
+                    ip, device = queue.pop(0)
+                    device.done_full_scan = True
+                self.update_model()
+                return
+
             for ip, data in result.items():
                 device = self.parse_device_data(ip, data)
                 device.done_full_scan = True
@@ -290,6 +373,7 @@ class NetworkScanner:
             self.update_model()
 
             #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
+    #endregion
 
     def test(self):
         result = self.scan(["192.168.188.30"], '-A -p- -sV')
