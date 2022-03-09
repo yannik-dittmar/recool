@@ -1,4 +1,5 @@
 from http import server
+from pathlib import Path
 import signal
 import socket
 import ipaddress
@@ -43,6 +44,14 @@ def keys_exists(element, *keys):
         except KeyError:
             return False
     return True
+
+def delete_old_saves(path, min=20):
+    '''
+    Delete files in `path` older than `min` minutes.
+    '''
+    for file in Path(path).glob('*'):
+        if time.time() - file.stat().st_mtime > min * 60:
+            file.unlink()
 
 class NetworkDevice():
     done_ping_scan: bool
@@ -188,32 +197,6 @@ class NetworkScanner:
 
         return result["scan"]
 
-    #region Export, save and load
-    def update_model(self):
-        self.spinner.text = f'Updating the nplan model...'
-        os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
-        os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
-
-        self.spinner.text = f'Saving the current state... (DO NOT EXIT)'
-        with open(f'{self.args.storage}/recool_save_new.json', 'w') as outfile:
-            json.dump(self.devices, outfile, cls=NetworkEncoder)
-        if os.path.exists(f'{self.args.storage}/recool_save.json'):
-            os.remove(f'{self.args.storage}/recool_save.json')
-        os.rename(f'{self.args.storage}/recool_save_new.json', f'{self.args.storage}/recool_save.json')
-
-    def load_devices(self):
-        if not os.path.exists(f'{self.args.storage}/recool_save.json'):
-            return
-        
-        storage = {}
-        with open(f'{self.args.storage}/recool_save.json', 'r') as f:
-            storage = json.load(f)
-
-        for ip, device in storage.items():
-            self.devices[ip] = NetworkDevice(**device)
-            self.devices[ip].ip = ip
-    #endregion
-    
     def find_by_ip(self, ip, create=True):
         if keys_exists(self.devices, ip):
             return self.devices[ip]
@@ -237,6 +220,43 @@ class NetworkScanner:
                 device.add_service(port, info)
 
         return device
+
+    #region Export, save and load
+    def update_model(self):
+        # Export
+        self.spinner.text = f'Updating the nplan model...'
+        os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
+        os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
+
+        # Save current state
+        self.spinner.text = f'Saving the current state... (DO NOT EXIT)'
+        with open(f'{self.args.storage}/recool_save_new.json', 'w') as outfile:
+            json.dump(self.devices, outfile, cls=NetworkEncoder)
+        
+        # Archive old save file
+        if os.path.exists(f'{self.args.storage}/recool_save.json'):
+            if not os.path.exists(f'{self.args.storage}/old_saves/'):
+                Path(f'{self.args.storage}/old_saves/').mkdir(parents=True, exist_ok=True)
+            count = 1
+            while os.path.exists(f'{self.args.storage}/old_saves/recool_save_{count}.json'):
+                count += 1
+            os.rename(f'{self.args.storage}/recool_save.json', f'{self.args.storage}/old_saves/recool_save_{count}.json')
+            delete_old_saves(f'{self.args.storage}/old_saves/', min=1)
+        # Move new save to current save
+        os.rename(f'{self.args.storage}/recool_save_new.json', f'{self.args.storage}/recool_save.json')
+
+    def load_devices(self):
+        if not os.path.exists(f'{self.args.storage}/recool_save.json'):
+            return
+        
+        storage = {}
+        with open(f'{self.args.storage}/recool_save.json', 'r') as f:
+            storage = json.load(f)
+
+        for ip, device in storage.items():
+            self.devices[ip] = NetworkDevice(**device)
+            self.devices[ip].ip = ip
+    #endregion
 
     #region ping scan
     def ping_scan_subnet_sh(self, sig, frame):
