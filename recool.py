@@ -55,6 +55,14 @@ def print_banner(args):
                                                             
         """)
     
+    log.info(f'{stylize("=====WARNING=====", STYLE_HIGHLIGHT)}')
+    log.info(f'If recool is not closed properly, {stylize("nmap scans may still continue to run in the background", STYLE_FAILURE)}!')
+    log.info(f'To check for running scans, run {stylize("ps aux | grep nmap", STYLE_HIGHLIGHT)}.')
+    log.info(f'To kill a running scan, run {stylize("sudo kill PID", STYLE_HIGHLIGHT)}.')
+    log.info(f'To {stylize("safely exit", STYLE_HIGHLIGHT)} recool you may press {stylize("CTR+C", STYLE_HIGHLIGHT)} at any time.')
+    log.info('')
+
+    log.info(f'{stylize("====ARGUMENTS====", STYLE_HIGHLIGHT)}')
     log.info(f'IP for network scanning: {stylize(args.ip, STYLE_HIGHLIGHT)}')
     log.info(f'Storage folder: {stylize(args.storage, STYLE_HIGHLIGHT)}')
     log.info(f'Speed argument: {stylize(args.speed, STYLE_HIGHLIGHT)}')
