@@ -129,15 +129,17 @@ class NmapProgressUpdater(threading.Thread):
         self.__dict__.update(kv)
 
     def run(self):
-        time.sleep(2)
         self.prefix = self.spinner.text
+        self.spinner.text += ' - Starting nmap...'
+        time.sleep(2)
         while not self.abort:
             stats = ""
             if os.path.exists(self.stats_path):
                 with open(self.stats_path, mode='r') as stats_f:
                     for line in stats_f:
                         stats = line.rstrip("\n")
-                self.spinner.text = f'{self.prefix} - {stats}'
+                if '%' in stats:
+                    self.spinner.text = f'{self.prefix} - {stats.split(";")[0]}'
             time.sleep(1)
 
 class NetworkScanner:
@@ -165,7 +167,6 @@ class NetworkScanner:
         thread = NmapProgressUpdater(spinner=self.spinner, stats_path=f'{self.args.storage}/nmap.log')
         thread.daemon = True
         thread.start()
-        #os.popen(f'nmap -oX {self.args.storage}/scan.xml --stats-every 5s {args} {self.args.speed} {" ".join(hosts)} > {self.args.storage}/nmap.output').read()
         with open(f'{self.args.storage}/nmap.log', 'w') as log, open(f'{self.args.storage}/nmap.error', 'w') as err:
             try:
                 self.nmap_proc = subprocess.Popen(['nmap', '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '5s', *args, self.args.speed, *hosts], stdout=log, stderr=err, start_new_session=True)
