@@ -509,7 +509,7 @@ class NetworkScanner:
     def ipv6_scan(self):
         for i in range(1, 6):
             self.spinner.text = f'IPv6 scan {i}/5'
-            os.popen(f'scan6 -i {self.args.iface} -L -e -v > {self.args.storage}/ipv6_scan.txt').read()
+            os.popen(f'sudo scan6 -i {self.args.iface} -L -e -v > {self.args.storage}/ipv6_scan.txt').read()
             os.popen(f'{self.args.nplan} -scan6 {self.args.storage}/ipv6_scan.txt -json {self.args.storage}/model.json > /dev/null').read()
             os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
     #endregion
