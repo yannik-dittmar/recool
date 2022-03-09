@@ -109,6 +109,7 @@ if __name__ == '__main__':
         log.error(f'Or disable IPv6 scanning with the {stylize("--no-ipv6", STYLE_HIGHLIGHT)} argument.')
         exit(1)
 
+    # TODO: Reenable root check and add sudo to nmap command!
     # Check if run as sudo
     #if os.geteuid() != 0:
     #    log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Please start Recool with {stylize("sudo", STYLE_HIGHLIGHT)}!')

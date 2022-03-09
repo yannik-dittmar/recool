@@ -25,8 +25,8 @@ def parse_ip(ip):
 def default_ip():
     #return socket.gethostbyname(socket.gethostname())
     #return "172.22.3.170"
-    return "192.168.188.10"
-    #return "10.129.0.217"
+    #return "192.168.188.10"
+    return "10.129.0.217"
 
 def keys_exists(element, *keys):
     '''
@@ -153,6 +153,7 @@ class NmapProgressUpdater(threading.Thread):
 
 class NetworkScanner:
     INT_SKIP = "skip"
+    INT_RESTART = "restart"
     INT_SKIP_HOST = "skip_host"
     INT_SKIP_HOST_SCANNED = "skip_host_scanned"
     INT_SKIP_QUEUED = "skip_queued"
@@ -267,6 +268,7 @@ class NetworkScanner:
                             carousel=True,
                             choices=[
                                 'Continue scanning',
+                                'Restart scan',
                                 'Skip ping-scan',
                                 'Skip ping-scan and mark all hosts as ping-scanned',
                                 stylize("Exit recool", recool.STYLE_FAILURE)],
@@ -276,6 +278,8 @@ class NetworkScanner:
             answer = inquirer.prompt(questions)['action']
         if self.nmap_proc and answer != 'Continue scanning':
             self.nmap_proc.send_signal(signal.SIGINT)
+        if answer == 'Restart scan':
+            self.interrupt_action = NetworkScanner.INT_RESTART
         if answer == 'Skip ping-scan':
             self.interrupt_action = NetworkScanner.INT_SKIP
         if answer == 'Skip ping-scan and mark all hosts as ping-scanned':
@@ -312,6 +316,8 @@ class NetworkScanner:
                 device.done_ping_scan = True
             self.update_model()
             return
+        if self.interrupt_action == NetworkScanner.INT_RESTART:
+            self.ping_scan_subnet(subnet)
         
         for ip, data in result.items():
             device = self.parse_device_data(ip, data)
@@ -336,6 +342,7 @@ class NetworkScanner:
                             carousel=True,
                             choices=[
                                 'Continue scanning', 
+                                'Restart scan',
                                 'Skip full-scan for this host', 
                                 'Skip full-scan for this host and mark as scanned',
                                 'Skip full-scan for queued hosts',
@@ -347,6 +354,8 @@ class NetworkScanner:
             answer = inquirer.prompt(questions)['action']
         if self.nmap_proc and answer != 'Continue scanning':
             self.nmap_proc.send_signal(signal.SIGINT)
+        if answer == 'Restart scan':
+            self.interrupt_action = NetworkScanner.INT_RESTART
         if answer == 'Skip full-scan for this host':
             self.interrupt_action = NetworkScanner.INT_SKIP_HOST
         if answer == 'Skip full-scan for this host and mark as scanned':
@@ -387,6 +396,9 @@ class NetworkScanner:
                     device.done_full_scan = True
                 self.update_model()
                 return
+            if self.interrupt_action == NetworkScanner.INT_RESTART:
+                queue.insert(0, (ip, device))
+                continue
 
             for ip, data in result.items():
                 device = self.parse_device_data(ip, data)
