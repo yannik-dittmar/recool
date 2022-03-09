@@ -85,12 +85,13 @@ class NetworkDevice():
 
         # Services
         print_services = False
-        ports = self.services.keys()
-        for port in sorted(ports):
-            portInfo = self.services[port]
-            if portInfo["state"] == "open":
-                print_services = True
-                break
+        if self.services:
+            ports = self.services.keys()
+            for port in sorted(ports):
+                portInfo = self.services[port]
+                if portInfo["state"] == "open":
+                    print_services = True
+                    break
 
         if print_services:
             string += f'Open {stylize("TCP", recool.STYLE_HIGHLIGHT)}-Ports:\n'
