@@ -19,6 +19,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description='Automatic network scanner with nplan for network graphs.')
     parser.add_argument('-i', '--ip', dest='ip', metavar='IP', type=str, default=ip_tools.default_ip(),
                         help='Your local IP address.')
+    parser.add_argument('-I', '--iface', dest='iface', metavar='INTERFACE', type=str, required=True,
+                        help='The interface that will be used for scanning.')
     parser.add_argument('-s', '--storage-folder', dest='storage', metavar='PATH', type=str, default="./dist",
                         help='The folder where information about the network will be stored or loaded from.')
     parser.add_argument('--speed', dest='speed', metavar='SPEED', type=str, default='-T4',
@@ -65,7 +67,8 @@ def print_banner(args):
     log.info('')
 
     log.info(f'{stylize("====ARGUMENTS====", STYLE_HIGHLIGHT)}')
-    log.info(f'IP for network scanning: {stylize(args.ip, STYLE_HIGHLIGHT)}')
+    log.info(f'Interface for scanning: {stylize(args.iface, STYLE_HIGHLIGHT)}')
+    log.info(f'IP for scanning: {stylize(args.ip, STYLE_HIGHLIGHT)}')
     log.info(f'Storage folder: {stylize(args.storage, STYLE_HIGHLIGHT)}')
     log.info(f'Speed argument: {stylize(args.speed, STYLE_HIGHLIGHT)}')
     log.info('')
@@ -126,6 +129,7 @@ def main():
         ns.full_scan_up()
         ns.aggressive_scan_subnet('24')
         ns.full_scan_up()
+        #ns.ipv6_scan()
 
 if __name__ == '__main__':
     main()

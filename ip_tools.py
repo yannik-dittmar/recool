@@ -185,7 +185,10 @@ class NetworkScanner:
         thread.start()
         with open(f'{self.args.storage}/nmap.log', 'w') as log, open(f'{self.args.storage}/nmap.error', 'w') as err:
             try:
-                self.nmap_proc = subprocess.Popen(['nmap', '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '3s', *args, self.args.speed, *hosts], stdout=log, stderr=err, start_new_session=True)
+                self.nmap_proc = subprocess.Popen(
+                    ['nmap', '-e', self.args.iface, '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '3s', *args, self.args.speed, *hosts], 
+                    stdout=log, stderr=err, 
+                    start_new_session=True)
                 self.nmap_proc.wait()
             finally:
                 self.nmap_proc.kill()
@@ -493,6 +496,15 @@ class NetworkScanner:
             device.done_agg_scan = True
 
         self.update_model(export=False)
+    #endregion
+
+    #region ipv6 scan
+    def ipv6_scan(self):
+        for i in range(1, 6):
+            self.spinner.text = f'IPv6 scan {i}/5'
+            os.popen(f'scan6 -i {self.args.iface} -L -e -v > {self.args.storage}/ipv6_scan.txt').read()
+            os.popen(f'{self.args.nplan} -scan6 {self.args.storage}/ipv6_scan.txt -json {self.args.storage}/model.json > /dev/null').read()
+            os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
     #endregion
 
     def test(self):
