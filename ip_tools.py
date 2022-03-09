@@ -1,6 +1,8 @@
 from http import server
+import signal
 import socket
 import ipaddress
+import subprocess
 from telnetlib import NOP
 import threading
 import time
@@ -9,9 +11,8 @@ import nmap
 import os
 import json
 from json import JSONEncoder
-import logging as log
 from colored import fg, bg, attr, stylize
-from datetime import datetime
+import inquirer
 import recool
 
 def parse_ip(ip):
@@ -140,27 +141,56 @@ class NmapProgressUpdater(threading.Thread):
             time.sleep(1)
 
 class NetworkScanner:
+    nmap_proc: subprocess.Popen
+
     def __init__(self, args, spinner):
         self.nmap = nmap.PortScanner()
         self.args = args
         self.devices: Dict[str, NetworkDevice] = {}
         self.spinner = spinner
+        self.nmap_proc = None
+        self.interrupt_action = None
+
+    def signal_handler(self, sig, frame):
+        questions = [
+            inquirer.List('action',
+                            message="What do you want to do?",
+                            carousel=True,
+                            choices=['Continue scanning', 'Skip this scan', 'Skip this scan and never scan again', 'Exit recool'],
+                        ),
+        ]
+        with self.spinner.hidden():
+            answers = inquirer.prompt(questions)
+        if self.nmap_proc and answers['action'] != 'Continue scanning':
+            self.nmap_proc.send_signal(signal.SIGINT)
+        if answers['action'] == 'Exit recool':
+            exit(0)
 
     def scan(self, hosts: List[str], args: List[str]):
+        original_sigint_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, self.signal_handler)
+
         # Start nmap scan
-        thread = NmapProgressUpdater(spinner=self.spinner, stats_path=f'{self.args.storage}/nmap.output')
+        thread = NmapProgressUpdater(spinner=self.spinner, stats_path=f'{self.args.storage}/nmap.log')
         thread.daemon = True
         thread.start()
-        os.popen(f'nmap -oX ./{self.args.storage}/scan.xml --stats-every 5s {args} {self.args.speed} {" ".join(hosts)} > {self.args.storage}/nmap.output').read()
+        #os.popen(f'nmap -oX {self.args.storage}/scan.xml --stats-every 5s {args} {self.args.speed} {" ".join(hosts)} > {self.args.storage}/nmap.output').read()
+        with open(f'{self.args.storage}/nmap.log', 'w') as log, open(f'{self.args.storage}/nmap.error', 'w') as err:
+            try:
+                self.nmap_proc = subprocess.Popen(['nmap', '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '5s', *args, self.args.speed, *hosts], stdout=log, stderr=err, start_new_session=True)
+                self.nmap_proc.wait()
+            finally:
+                self.nmap_proc.kill()
+                self.nmap_proc = None
         thread.abort = True
-
-        # Cleanup log
-        if os.path.exists(f'{self.args.storage}/nmap.output'):
-            os.remove(f'{self.args.storage}/nmap.output')
+        signal.signal(signal.SIGINT, original_sigint_handler)
 
         # Parse scan results
-        with open(f'{self.args.storage}/scan.xml',mode='r') as scan_file:
-            result = self.nmap.analyse_nmap_xml_scan(nmap_xml_output=scan_file.read())
+        try:
+            with open(f'{self.args.storage}/scan.xml',mode='r') as scan_file:
+                result = self.nmap.analyse_nmap_xml_scan(nmap_xml_output=scan_file.read())
+        except (nmap.PortScannerError, FileNotFoundError):
+            return None
 
         return result["scan"]
 
@@ -227,7 +257,8 @@ class NetworkScanner:
             return
 
         # Perform scan and collect data
-        result = self.scan(hosts, '-sn -n')
+        #result = self.scan(hosts, '-sn -n')
+        result = self.scan(hosts, ['-sn', '-n'])
         for ip, data in result.items():
             device = self.parse_device_data(ip, data)
             device.is_up = True
@@ -250,7 +281,7 @@ class NetworkScanner:
                 continue
         
             self.spinner.text = f'Performing full-scan for: {stylize(device.ip, recool.STYLE_HIGHLIGHT)}'
-            result = self.scan([device.ip], '-A -p- -sV')
+            result = self.scan([device.ip], ['-A', '-p-', '-sV'])
             for ip, data in result.items():
                 device = self.parse_device_data(ip, data)
                 device.done_full_scan = True
