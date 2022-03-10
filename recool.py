@@ -38,17 +38,40 @@ def parse_arguments():
 
     args = parser.parse_args()
 
+    # Cleanup
+    if args.cleanup:
+        cleanup()
+
+    # IP check
     if not args.ip:
         args.ip = ip_tools.default_ip(args.iface)
     if not ip_tools.parse_ip(args.ip):
         log.error(f'The IP "{args.ip}" address you provided is not valid.')
     args.ip = ip_tools.parse_ip(args.ip)
 
+    # Create storage folder
     args.storage.mkdir(parents=True, exist_ok=True)
 
+    # Format nmap speed argument
     args.speed = '-' + args.speed
 
     return args
+
+def cleanup():
+    # Clean nplan model
+    os.system(f'{args.nplan} -json {args.storage}/model.json -fresh > /dev/null')
+
+    # Clean recool save data
+    if os.path.exists(f'{args.storage}/recool_save.json'):
+        os.remove(f'{args.storage}/recool_save.json')
+    if os.path.exists(f'{args.storage}/recool_save_new.json'):
+        os.remove(f'{args.storage}/recool_save_new.json')
+    if os.path.exists(f'{args.storage}/scan.xml'):
+        os.remove(f'{args.storage}/scan.xml')
+
+    log.info(f'Cleanup finished!')
+    
+    exit(0)
 
 def print_banner(args):
     # Clear terminal
@@ -84,23 +107,6 @@ def print_banner(args):
 def main():
     log.basicConfig(encoding='utf-8', level=log.DEBUG, format='%(message)s')
     args = parse_arguments()
-
-    # Cleanup
-    if args.cleanup:
-        # Clean nplan model
-        os.system(f'{args.nplan} -json {args.storage}/model.json -fresh > /dev/null')
-
-        # Clean recool save data
-        if os.path.exists(f'{args.storage}/recool_save.json'):
-            os.remove(f'{args.storage}/recool_save.json')
-        if os.path.exists(f'{args.storage}/recool_save_new.json'):
-            os.remove(f'{args.storage}/recool_save_new.json')
-        if os.path.exists(f'{args.storage}/scan.xml'):
-            os.remove(f'{args.storage}/scan.xml')
-
-        log.info(f'Cleanup finished!')
-        
-        exit(0)
 
     # Print the banner and arguments
     print_banner(args)
