@@ -33,6 +33,8 @@ def parse_arguments():
                         help='Clear the nplan model and recool save data.')
     parser.add_argument('-u', '--ultra', action='store_true',
                         help='Perform an ULTRA-scan. (ping-scan on /16 subnet)')
+    parser.add_argument('--disable-arp-ping', action='store_true',
+                        help='Disables ARP-Ping for machines in local network during aggressive scan. (See nmap documentation)')
 
     args = parser.parse_args()
 

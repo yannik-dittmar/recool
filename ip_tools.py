@@ -493,7 +493,10 @@ class NetworkScanner:
             return
 
         # Perform scan and collect data
-        result = self.scan(hosts, ['-Pn', '-n', '-F', '-d'], self.aggressive_scan_subnet_sh)
+        args = ['-Pn', '-n', '-F', '-d']
+        if self.args.disable_arp_ping:
+            args.append('--disable-arp-ping')
+        result = self.scan(hosts, args, self.aggressive_scan_subnet_sh)
         if self.interrupt_action == NetworkScanner.INT_SKIP:
             return
         if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
