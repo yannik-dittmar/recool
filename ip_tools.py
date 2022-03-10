@@ -151,14 +151,21 @@ class NmapProgressUpdater(threading.Thread):
         self.spinner.text += ' - Starting nmap...'
         time.sleep(2)
         while not self.abort:
-            stats = ""
+            stats = ''
+            hosts = '(0, 0)'
             if os.path.exists(self.stats_path):
                 with open(self.stats_path, mode='r') as stats_f:
                     for line in stats_f:
                         if '%' in line:
                             stats = line.rstrip("\n")
+                        if 'hosts completed' in line:
+                            completed = line.split(',')[0].split('; ')[1].split(' ')[0]
+                            undergoing = line.split(', ')[1].split(' ')[0]
+                            hosts = f'(C: {completed}, U:{undergoing})'
+                            if undergoing == '1':
+                                hosts = ''
                 if stats:
-                    self.spinner.text = f'{self.prefix} - {stats.split(";")[0]}'
+                    self.spinner.text = f'{self.prefix} - {stats.split(";")[0]} {hosts}'
             time.sleep(1)
 
 class NetworkScanner:
