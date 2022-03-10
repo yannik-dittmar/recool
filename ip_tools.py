@@ -395,6 +395,7 @@ class NetworkScanner:
         queue = list(filter(lambda item: item[1].is_up and not item[1].done_full_scan, queue))
         count = len(queue)
         while queue:
+            self.interrupt_action = None
             ip, device = queue.pop(0)
         
             self.spinner.text = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({count - len(queue)}/{count})'
