@@ -44,7 +44,7 @@ def parse_arguments():
 
 def print_banner(args):
     # Clear terminal
-    os.system('cls' if os.name == 'nt' else 'clear')
+    #os.system('cls' if os.name == 'nt' else 'clear')
 
     print("""
 
@@ -114,11 +114,10 @@ def main():
         log.error(f'Or disable IPv6 scanning with the {stylize("--no-ipv6", STYLE_HIGHLIGHT)} argument.')
         exit(1)
 
-    # TODO: Reenable root check and add sudo to nmap command!
     # Check if run as sudo
-    #if os.geteuid() != 0:
-    #    log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Please start Recool with {stylize("sudo", STYLE_HIGHLIGHT)}!')
-    #    exit(1)
+    if os.geteuid() != 0:
+        log.error(f'{stylize("ERROR!", STYLE_FAILURE)} Please start Recool with {stylize("sudo", STYLE_HIGHLIGHT)}!')
+        exit(1)
 
     with kbi_safe_yaspin(text="Initializing recool", color="yellow") as spinner:
         ns = ip_tools.NetworkScanner(args, spinner)
@@ -129,8 +128,10 @@ def main():
         ns.full_scan_up()
         ns.aggressive_scan_subnet('24')
         ns.full_scan_up()
-        #ns.ipv6_scan()
+        if not args.no_ipv6:
+            ns.ipv6_scan()
         ns.router_scan()
+        ns.ping_scan()
         ns.full_scan_up()
 
 if __name__ == '__main__':

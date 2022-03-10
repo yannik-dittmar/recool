@@ -28,8 +28,8 @@ def parse_ip(ip):
 def default_ip():
     #return socket.gethostbyname(socket.gethostname())
     #return "172.22.3.170"
-    return "192.168.188.10"
-    #return "10.129.0.217"
+    #return "192.168.188.10"
+    return "10.129.0.217"
 
 def keys_exists(element, *keys):
     '''
@@ -186,7 +186,7 @@ class NetworkScanner:
         with open(f'{self.args.storage}/nmap.log', 'w') as log, open(f'{self.args.storage}/nmap.error', 'w') as err:
             try:
                 self.nmap_proc = subprocess.Popen(
-                    ['nmap', '-e', self.args.iface, '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '3s', *args, self.args.speed, *hosts], 
+                    ['sudo', 'nmap', '-e', self.args.iface, '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '3s', *args, self.args.speed, *hosts], 
                     stdout=log, stderr=err, 
                     start_new_session=True)
                 self.nmap_proc.wait()
@@ -346,6 +346,7 @@ class NetworkScanner:
     def ping_scan_subnet(self, subnet: str):
         iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
         devices = [self.find_by_ip(str(host)) for host in iface.network.hosts()]
+        devices.append(self.find_by_ip('.'.join(self.args.ip.split('.')[:2]) + '.0.0'))
         devices = list(filter(lambda device: not device.done_ping_scan and not device.is_up, devices))
         self.ping_scan(devices)
     
@@ -580,7 +581,8 @@ class NetworkScanner:
             device = self.parse_device_data(ip, data)
             device.is_up = True
             for i in range(1, 255):
-                self.find_by_ip('.'.join(ip.split('.')[:3]) + '.' + str(i))
+                device = self.find_by_ip('.'.join(ip.split('.')[:3]) + '.' + str(i))
+                print(device.ip)
         
         # Update done_ping_scan
         for device in devices:
@@ -590,10 +592,6 @@ class NetworkScanner:
     #endregion
 
     def test(self):
-        for i in range(0, 255):
-            ip = '.'.join(self.args.ip.split('.')[:2]) + '.' + str(i) + '.1'
-            print(ip)
-        return
-        result = self.scan(['192.168.188.74'], ['-Pn', '-n', '-F', '-d'], self.aggressive_scan_subnet_sh)
+        result = self.scan(['192.168.188.1'], ['-A'], self.aggressive_scan_subnet_sh)
         #result = self.nmap.scan(hosts="10.129.0.2", arguments=f'{self.args.speed}')["scan"]
         self.spinner.write(json.dumps(result))
