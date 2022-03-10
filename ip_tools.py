@@ -248,8 +248,7 @@ class NetworkScanner:
         # Export
         if export:
             self.spinner.text = f'Updating the nplan model...'
-            os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
-            os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
+            os.popen(f'{self.args.nplan} -export -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > {self.args.storage}/nplan.log').read()
             os.system(f'chmod 666 -R {self.args.storage}')
 
         # Save current state
