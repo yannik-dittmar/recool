@@ -345,7 +345,6 @@ class NetworkScanner:
         self.update_model()
 
         #self.spinner.write(json.dumps(self.devices, cls=NetworkEncoder))
-    #endregion
 
     def ping_scan_subnet(self, subnet: str):
         iface = ipaddress.ip_interface(self.args.ip + '/' + subnet)
@@ -353,6 +352,7 @@ class NetworkScanner:
         devices.append(self.find_by_ip('.'.join(self.args.ip.split('.')[:2]) + '.0.0'))
         devices = list(filter(lambda device: not device.done_ping_scan and not device.is_up, devices))
         self.ping_scan(devices)
+    #endregion
     
     #region full scan
     def full_scan_sh(self, sig, frame):
@@ -594,6 +594,74 @@ class NetworkScanner:
 
         self.update_model()
     #endregion
+
+    #region ultra scan
+    def ultra_scan_sh(self, sig, frame):
+        self.handling_interrupt = True
+        questions = [
+            inquirer.List('action',
+                            message=self.interrupt_msg,
+                            carousel=True,
+                            choices=[
+                                'Continue scanning',
+                                'Restart scan',
+                                'Skip ULTRA-scan',
+                                'Skip ULTRA-scan and mark all hosts as ping-scanned',
+                                stylize("Exit recool", recool.STYLE_FAILURE)],
+                        ),
+        ]
+        with self.spinner.hidden():
+            answer = inquirer.prompt(questions)['action']
+        if self.nmap_proc and answer != 'Continue scanning':
+            self.nmap_proc.send_signal(signal.SIGINT)
+        if answer == 'Restart scan':
+            self.interrupt_action = NetworkScanner.INT_RESTART
+        if answer == 'Skip big-scan':
+            self.interrupt_action = NetworkScanner.INT_SKIP
+        if answer == 'Skip big-scan and mark all hosts as ping-scanned':
+            self.interrupt_action = NetworkScanner.INT_SKIP_QUEUED_SCANNED
+        if 'Exit recool' in answer:
+            self.spinner.fail(f'User interrupt! Last state:')
+            exit(0)
+        self.handling_interrupt = False
+
+    def ultra_scan(self):
+        self.interrupt_action = None
+
+        # Collect hosts
+        iface = ipaddress.ip_interface(self.args.ip + '/16')
+        devices = [self.find_by_ip(str(host)) for host in iface.network.hosts()]
+        devices = list(filter(lambda device: not device.done_ping_scan and not device.is_up, devices))
+
+        if not devices:
+            return
+
+        self.spinner.text = f'ULTRA-scan on {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)} subnet'
+        self.interrupt_msg = f'ULTRA-scan on {stylize(str(iface.network), recool.STYLE_HIGHLIGHT)} subnet'
+
+        # Perform scan and collect data
+        result = self.scan([str(iface.network)], ['-sn', '-n'], self.ultra_scan_sh)
+        if self.interrupt_action == NetworkScanner.INT_SKIP:
+            return
+        if self.interrupt_action == NetworkScanner.INT_SKIP_QUEUED_SCANNED:
+            for device in devices:
+                device.done_ping_scan = True
+            self.update_model(export=False)
+            return
+        if self.interrupt_action == NetworkScanner.INT_RESTART:
+            self.ultra_scan(devices)
+        
+        for ip, data in result.items():
+            device = self.parse_device_data(ip, data)
+            device.is_up = True
+        
+        # Update done_ping_scan
+        for device in devices:
+            device.done_ping_scan = True
+
+        self.update_model()
+    #endregion
+    
 
     def test(self):
         result = self.scan(['192.168.188.1'], ['-A'], self.aggressive_scan_subnet_sh)

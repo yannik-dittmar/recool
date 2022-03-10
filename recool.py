@@ -31,6 +31,8 @@ def parse_arguments():
                         help='Do not scan for IPv6 addresses.')
     parser.add_argument('-c', '--cleanup', action='store_true',
                         help='Clear the nplan model and recool save data.')
+    parser.add_argument('-u', '--ultra', action='store_true',
+                        help='Perform an ULTRA-scan. (ping-scan on /16 subnet)')
 
     args = parser.parse_args()
 
@@ -130,13 +132,20 @@ def main():
         ns.load_devices()
         ns.ping_scan_subnet('24')
         ns.full_scan_up()
+        
         ns.aggressive_scan_subnet('24')
         ns.full_scan_up()
+        
         if not args.no_ipv6:
             ns.ipv6_scan()
+        
         ns.router_scan()
         ns.ping_scan()
         ns.full_scan_up()
+
+        if args.ultra:
+            ns.ultra_scan()
+            ns.full_scan_up()
 
 if __name__ == '__main__':
     main()
