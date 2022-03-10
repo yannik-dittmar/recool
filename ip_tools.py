@@ -582,8 +582,7 @@ class NetworkScanner:
             device = self.parse_device_data(ip, data)
             device.is_up = True
             for i in range(1, 255):
-                device = self.find_by_ip('.'.join(ip.split('.')[:3]) + '.' + str(i))
-                print(device.ip)
+                self.find_by_ip('.'.join(ip.split('.')[:3]) + '.' + str(i))
         
         # Update done_ping_scan
         for device in devices:
