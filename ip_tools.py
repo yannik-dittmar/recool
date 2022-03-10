@@ -174,7 +174,7 @@ class NetworkScanner:
         self.args = args
         self.devices: Dict[str, NetworkDevice] = {}
         self.spinner = spinner
-        self.nmap_proc = None
+        self.scan_proc = None
         self.interrupt_msg = ""
         self.interrupt_action = None
         self.handling_interrupt = False
@@ -189,15 +189,15 @@ class NetworkScanner:
         thread.start()
         with open(f'{self.args.storage}/nmap.log', 'w') as log, open(f'{self.args.storage}/nmap.error', 'w') as err:
             try:
-                self.nmap_proc = subprocess.Popen(
+                self.scan_proc = subprocess.Popen(
                     ['sudo', 'nmap', '-e', self.args.iface, '-oX', f'{self.args.storage}/scan.xml', '--stats-every', '3s', *args, self.args.speed, *hosts], 
                     stdout=log, stderr=err, 
                     start_new_session=True)
-                self.nmap_proc.wait()
+                self.scan_proc.wait()
             finally:
-                if self.nmap_proc:
-                    self.nmap_proc.kill()
-                self.nmap_proc = None
+                if self.scan_proc:
+                    self.scan_proc.kill()
+                self.scan_proc = None
         thread.abort = True
         while self.handling_interrupt:
             time.sleep(0.3)
@@ -291,8 +291,8 @@ class NetworkScanner:
         ]
         with self.spinner.hidden():
             answer = inquirer.prompt(questions)['action']
-        if self.nmap_proc and answer != 'Continue scanning':
-            self.nmap_proc.send_signal(signal.SIGINT)
+        if self.scan_proc and answer != 'Continue scanning':
+            self.scan_proc.send_signal(signal.SIGINT)
         if answer == 'Restart scan':
             self.interrupt_action = NetworkScanner.INT_RESTART
         if answer == 'Skip ping-scan':
@@ -333,6 +333,7 @@ class NetworkScanner:
             return
         if self.interrupt_action == NetworkScanner.INT_RESTART:
             self.ping_scan(devices)
+            return
         
         for ip, data in result.items():
             device = self.parse_device_data(ip, data)
@@ -374,8 +375,8 @@ class NetworkScanner:
         ]
         with self.spinner.hidden():
             answer = inquirer.prompt(questions)['action']
-        if self.nmap_proc and answer != 'Continue scanning':
-            self.nmap_proc.send_signal(signal.SIGINT)
+        if self.scan_proc and answer != 'Continue scanning':
+            self.scan_proc.send_signal(signal.SIGINT)
         if answer == 'Restart scan':
             self.interrupt_action = NetworkScanner.INT_RESTART
         if answer == 'Skip full-scan for this host':
@@ -452,8 +453,8 @@ class NetworkScanner:
         ]
         with self.spinner.hidden():
             answer = inquirer.prompt(questions)['action']
-        if self.nmap_proc and answer != 'Continue scanning':
-            self.nmap_proc.send_signal(signal.SIGINT)
+        if self.scan_proc and answer != 'Continue scanning':
+            self.scan_proc.send_signal(signal.SIGINT)
         if answer == 'Restart scan':
             self.interrupt_action = NetworkScanner.INT_RESTART
         if answer == 'Skip aggressive-scan':
@@ -494,6 +495,7 @@ class NetworkScanner:
             return
         if self.interrupt_action == NetworkScanner.INT_RESTART:
             self.aggressive_scan_subnet(subnet)
+            return
         
         # Check if hosts have send a response
         for ip, data in result.items():
@@ -512,12 +514,68 @@ class NetworkScanner:
     #endregion
 
     #region ipv6 scan
+    def ipv6_scan_sh(self, sig, frame):
+        self.handling_interrupt = True
+        questions = [
+            inquirer.List('action',
+                            message=self.interrupt_msg,
+                            carousel=True,
+                            choices=[
+                                'Continue scanning',
+                                'Restart scan',
+                                'Skip IPv6-scan',
+                                stylize("Exit recool", recool.STYLE_FAILURE)],
+                        ),
+        ]
+        with self.spinner.hidden():
+            answer = inquirer.prompt(questions)['action']
+        if self.scan_proc and answer != 'Continue scanning':
+            self.scan_proc.send_signal(signal.SIGINT)
+        if answer == 'Restart scan':
+            self.interrupt_action = NetworkScanner.INT_RESTART
+        if answer == 'Skip IPv6-scan':
+            self.interrupt_action = NetworkScanner.INT_SKIP
+        if 'Exit recool' in answer:
+            self.spinner.fail(f'User interrupt! Last state:')
+            exit(0)
+        self.handling_interrupt = False
+
     def ipv6_scan(self):
+        self.interrupt_action = None
+        original_sigint_handler = signal.getsignal(signal.SIGINT)
+        signal.signal(signal.SIGINT, self.ipv6_scan_sh)
+
         for i in range(1, 6):
             self.spinner.text = f'IPv6 scan {i}/5'
-            os.popen(f'sudo scan6 -i {self.args.iface} -L -e -v > {self.args.storage}/ipv6_scan.txt').read()
+            self.interrupt_msg = f'IPv6 scan {i}/5'
+            
+            with open(f'{self.args.storage}/ipv6_scan.txt', 'w') as out, open(f'{self.args.storage}/scan6.error', 'w') as err:
+                try:
+                    self.scan_proc = subprocess.Popen(
+                            ['sudo', 'scan6', '-i', self.args.iface, '-L', '-e', '-v'], 
+                            stdout=out, stderr=err, 
+                            start_new_session=True)
+                    self.scan_proc.wait()
+                finally:
+                    if self.scan_proc:
+                        self.scan_proc.kill()
+                    self.scan_proc = None
+
+            while self.handling_interrupt:
+                time.sleep(0.3)
+            
+            if self.interrupt_action == NetworkScanner.INT_SKIP:
+                signal.signal(signal.SIGINT, original_sigint_handler)
+                return
+            if self.interrupt_action == NetworkScanner.INT_RESTART:
+                signal.signal(signal.SIGINT, original_sigint_handler)
+                self.ipv6_scan()
+                return
+
             os.popen(f'{self.args.nplan} -scan6 {self.args.storage}/ipv6_scan.txt -json {self.args.storage}/model.json > /dev/null').read()
             os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
+
+        signal.signal(signal.SIGINT, original_sigint_handler)
     #endregion
 
     #region router scan
@@ -537,8 +595,8 @@ class NetworkScanner:
         ]
         with self.spinner.hidden():
             answer = inquirer.prompt(questions)['action']
-        if self.nmap_proc and answer != 'Continue scanning':
-            self.nmap_proc.send_signal(signal.SIGINT)
+        if self.scan_proc and answer != 'Continue scanning':
+            self.scan_proc.send_signal(signal.SIGINT)
         if answer == 'Restart scan':
             self.interrupt_action = NetworkScanner.INT_RESTART
         if answer == 'Skip router-scan':
@@ -580,6 +638,7 @@ class NetworkScanner:
             return
         if self.interrupt_action == NetworkScanner.INT_RESTART:
             self.router_scan()
+            return
 
         # Create unscanned devices in discovered subnets
         for ip, data in result.items():
@@ -612,8 +671,8 @@ class NetworkScanner:
         ]
         with self.spinner.hidden():
             answer = inquirer.prompt(questions)['action']
-        if self.nmap_proc and answer != 'Continue scanning':
-            self.nmap_proc.send_signal(signal.SIGINT)
+        if self.scan_proc and answer != 'Continue scanning':
+            self.scan_proc.send_signal(signal.SIGINT)
         if answer == 'Restart scan':
             self.interrupt_action = NetworkScanner.INT_RESTART
         if answer == 'Skip big-scan':
@@ -650,6 +709,7 @@ class NetworkScanner:
             return
         if self.interrupt_action == NetworkScanner.INT_RESTART:
             self.ultra_scan(devices)
+            return
         
         for ip, data in result.items():
             device = self.parse_device_data(ip, data)
