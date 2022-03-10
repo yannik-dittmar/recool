@@ -243,6 +243,7 @@ class NetworkScanner:
             self.spinner.text = f'Updating the nplan model...'
             os.popen(f'{self.args.nplan} -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json > /dev/null').read()
             os.popen(f'{self.args.nplan} -export -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.xml > /dev/null').read()
+            os.system(f'chmod 666 -R {self.args.storage}')
 
         # Save current state
         self.spinner.text = f'Saving the current state... (DO NOT EXIT)'
@@ -548,7 +549,7 @@ class NetworkScanner:
         for i in range(1, 6):
             self.spinner.text = f'IPv6 scan {i}/5'
             self.interrupt_msg = f'IPv6 scan {i}/5'
-            
+
             with open(f'{self.args.storage}/ipv6_scan.txt', 'w') as out, open(f'{self.args.storage}/scan6.error', 'w') as err:
                 try:
                     self.scan_proc = subprocess.Popen(
