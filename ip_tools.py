@@ -17,6 +17,7 @@ import json
 from json import JSONEncoder
 from colored import fg, bg, attr, stylize
 import inquirer
+import netifaces as ni
 import recool
 
 def parse_ip(ip):
@@ -25,11 +26,14 @@ def parse_ip(ip):
     except ValueError:
         return False
 
-def default_ip():
+def default_ip(iface: str):
+    ni.ifaddresses(iface)
+    return ni.ifaddresses(iface)[ni.AF_INET][0]['addr']
+    
     #return socket.gethostbyname(socket.gethostname())
     #return "172.22.3.170"
     #return "192.168.188.10"
-    return "10.129.0.217"
+    #return "10.129.0.217"
 
 def keys_exists(element, *keys):
     '''

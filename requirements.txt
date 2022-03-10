@@ -2,3 +2,4 @@ python-nmap
 colored
 yaspin
 inquirer
+netifaces

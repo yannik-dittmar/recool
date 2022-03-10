@@ -17,14 +17,14 @@ STYLE_FAILURE = fg("red_3a") + attr("bold")
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Automatic network scanner with nplan for network graphs.')
-    parser.add_argument('-i', '--ip', type=str, default=ip_tools.default_ip(),
+    parser.add_argument('-i', '--ip', type=str, default=None,
                         help='Your local IP address.')
     parser.add_argument('-I', '--iface', metavar='INTERFACE', type=str, required=True,
                         help='The interface that will be used for scanning.')
     parser.add_argument('-s', '--storage-folder', dest='storage', metavar='PATH', type=Path, default="./dist",
                         help='The folder where information about the network will be stored or loaded from.')
-    parser.add_argument('--speed', type=str, default='-T4',
-                        help='An nmap speed argument. Default: -T4')
+    parser.add_argument('--speed', type=str, default='T4',
+                        help='An nmap speed argument. Default: T4')
     parser.add_argument('--nplan-path', dest='nplan', metavar='PATH', type=Path, default='nplan',
                         help='The path to the nplan binary. (e.g. /usr/bin/nplan)')
     parser.add_argument('--no-ipv6', action='store_true',
@@ -34,11 +34,15 @@ def parse_arguments():
 
     args = parser.parse_args()
 
+    if not args.ip:
+        args.ip = ip_tools.default_ip(args.iface)
     if not ip_tools.parse_ip(args.ip):
         log.error(f'The IP "{args.ip}" address you provided is not valid.')
     args.ip = ip_tools.parse_ip(args.ip)
 
     args.storage.mkdir(parents=True, exist_ok=True)
+
+    args.speed = '-' + args.speed
 
     return args
 
