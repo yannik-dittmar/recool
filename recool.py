@@ -40,7 +40,7 @@ def parse_arguments():
 
     # Cleanup
     if args.cleanup:
-        cleanup()
+        cleanup(args)
 
     # IP check
     if not args.ip:
@@ -57,7 +57,7 @@ def parse_arguments():
 
     return args
 
-def cleanup():
+def cleanup(args):
     # Clean nplan model
     os.system(f'{args.nplan} -json {args.storage}/model.json -fresh > /dev/null')
 
