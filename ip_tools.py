@@ -412,7 +412,7 @@ class NetworkScanner:
         
             self.spinner.text = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({count - len(queue)}/{count})'
             self.interrupt_msg = f'Full-scan on {stylize(device.ip, recool.STYLE_HIGHLIGHT)} ({count - len(queue)}/{count})'
-            result = self.scan([device.ip], ['-A', '-p-', '-sV', '-Pn'], self.full_scan_sh)
+            result = self.scan([device.ip], ['-A', '-p-', '-sV', '-Pn' '--script=ssh-hostkey,duplicates'], self.full_scan_sh)
             if self.interrupt_action == NetworkScanner.INT_SKIP_HOST:
                 continue
             if self.interrupt_action == NetworkScanner.INT_SKIP_HOST_SCANNED:
