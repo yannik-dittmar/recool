@@ -50,7 +50,7 @@ def parse_arguments():
     args.ip = ip_tools.parse_ip(args.ip)
 
     # Create storage folder
-    args.storage.mkdir(parents=True, exist_ok=True)
+    args.storage.mkdir(parents=True, exist_ok=True, mode=0o777)
 
     # Format nmap speed argument
     args.speed = '-' + args.speed
@@ -124,7 +124,7 @@ def main():
     # Check if scan6 is installed
     if not which('scan6') and not args.no_ipv6:
         log.error(f'{stylize("ERROR!", STYLE_FAILURE)} {stylize("scan6", STYLE_HIGHLIGHT)} is not installed!')
-        log.error(f'Run {stylize("sudo apt install ipv6-toolkit", STYLE_HIGHLIGHT)} to install it.')
+        log.error(f'Run {stylize("sudo apt install ipv6toolkit", STYLE_HIGHLIGHT)} to install it.')
         log.error(f'Or disable IPv6 scanning with the {stylize("--no-ipv6", STYLE_HIGHLIGHT)} argument.')
         exit(1)
 

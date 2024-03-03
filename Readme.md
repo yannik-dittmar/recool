@@ -3,6 +3,16 @@ A python script for automatically scanning a network with nmap/scan6 and creatin
 
 __Recool__ is short for __Reconnisance Tool__.
 
+## Docker
+
+The easiest way to scan your network with recool is to use the official docker image.
+You can append recool arguments to the docker command as normal.
+
+```sh
+docker pull kryptolyser/recool
+docker run -it --rm --net=host -v ./dist:/recool/dist kryptolyser/recool -I eth0
+```
+
 ## Requirements
 
 - Python3.9 (might work with earlier versions)
