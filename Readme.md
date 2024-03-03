@@ -1,6 +1,8 @@
 # Recool
 A python script for automatically scanning a network with nmap/scan6 and creating a draw.io export with the help of [nplan](https://github.com/richartkeil/nplan).
 
+__Recool__ is short for __Reconnisance Tool__.
+
 ## Requirements
 
 - Python3.9 (might work with earlier versions)
@@ -12,15 +14,17 @@ A python script for automatically scanning a network with nmap/scan6 and creatin
 
 1. Clone the repository
     ```sh
-    git clone https://github.com/Kryptolyser/I-Sec-Recool
+    git clone https://github.com/Kryptolyser/recool
     ```
 2. Go into the repository folder
     ```sh
-    cd I-Sec-Recool
+    cd recool
     ```
 3. Install python requirements
     ```sh
-    sudo python3 -m pip install -r requirements.txt
+    python3 -m venv .venv
+    source .venv/bin/activate
+    python3 -m pip install -r requirements.txt
     ```
 4. Done
 
@@ -28,12 +32,12 @@ A python script for automatically scanning a network with nmap/scan6 and creatin
 
 To start scanning simply type the following:
 ```sh
-sudo python3 recool.py -I eth0
+sudo .venv/bin/python3 recool.py -I eth0
 ```
 
 If recool can't find the nplan binary (because it isn't in your path variable) simply add the `~/go/bin` folder to the path variable or specifify it when you run recool like:
 ```sh
-sudo python3 recool.py -I eth0 --nplan-path ~/go/bin/nplan
+sudo .venv/bin/python3 recool.py -I eth0 --nplan-path ~/go/bin/nplan
 ```
 
 By default recool will store its saves and output in the `./dist` folder. (You can change this location with the `--storage-folder PATH` flag)
