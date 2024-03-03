@@ -249,7 +249,7 @@ class NetworkScanner:
         if export:
             self.spinner.text = f'Updating the nplan model...'
             os.popen(f'{self.args.nplan} -export -nmap {self.args.storage}/scan.xml -json {self.args.storage}/model.json -drawio {self.args.storage}/drawio.drawio > {self.args.storage}/nplan.log').read()
-            os.system(f'chmod 666 -R {self.args.storage}')
+            os.system(f'chmod 777 -R {self.args.storage}')
 
         # Save current state
         self.spinner.text = f'Saving the current state... (DO NOT EXIT)'
